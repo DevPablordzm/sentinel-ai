@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Sentinel AI — archivos específicos del proyecto
+model/anomaly_model.pkl
+data/processed_data.csv
+data/user_behavior.csv
+ 
+# Streamlit
+.streamlit/secrets.toml
