@@ -213,23 +213,23 @@ elif menu == "Análisis":
 
         if failed_attempts > 3:
             risk_score += 30
-            reasons.append("🔴 Múltiples intentos fallidos de acceso")
+            reasons.append(("🔴", "Múltiples intentos fallidos de acceso", f"{failed_attempts} intentos — umbral normal: ≤3"))
 
         if access_count > 12:
             risk_score += 20
-            reasons.append("🟡 Cantidad de accesos inusualmente alta")
+            reasons.append(("🟡", "Cantidad de accesos inusualmente alta", f"{access_count} accesos — umbral normal: ≤12"))
 
         if login_hour < 6 or login_hour > 22:
             risk_score += 20
-            reasons.append("🟡 Acceso en horario inusual (fuera de 6am–10pm)")
+            reasons.append(("🟡", "Acceso en horario inusual", f"Hora {login_hour}:00 — horario normal: 6am–10pm"))
 
         if session_duration > 90:
             risk_score += 15
-            reasons.append("🟡 Sesión excesivamente larga")
+            reasons.append(("🟡", "Sesión excesivamente larga", f"{session_duration} min — umbral normal: ≤90 min"))
 
         if activity in ["delete", "download"] and failed_attempts > 1:
             risk_score += 15
-            reasons.append("🔴 Actividad crítica con intentos fallidos previos")
+            reasons.append(("🔴", "Actividad crítica con intentos fallidos", f"{failed_attempts} intentos previos a acción de alto impacto"))
 
         if prediction[0] == -1:
             risk_score = max(risk_score, 70)
@@ -288,13 +288,103 @@ elif menu == "Análisis":
         <div style='text-align:right; font-size:12px; color:{bar_color}; margin-top:4px;'>{risk_score}%</div>
         """, unsafe_allow_html=True)
 
-        # Razones detectadas
-        if reasons:
-            st.markdown("**Factores de riesgo detectados:**")
-            for r in reasons:
-                st.markdown(f"- {r}")
-        else:
-            st.markdown("*No se detectaron factores de riesgo específicos.*")
+        
+        # ── Comparación vs. promedio histórico (radar chart) ─────────────────
+        hist = load_data()
+ 
+        # Promedios del dataset (comportamiento histórico normalizado a escala 0-1)
+        avg_login_hour       = hist["login_hour"].mean() / 23
+        avg_failed_attempts  = hist["failed_attempts"].mean() / 10
+        avg_access_count     = hist["access_count"].mean() / 20
+        avg_session_duration = hist["session_duration"].mean() / 120
+ 
+        # Valores actuales normalizados
+        cur_login_hour       = login_hour / 23
+        cur_failed_attempts  = failed_attempts / 10
+        cur_access_count     = access_count / 20
+        cur_session_duration = session_duration / 120
+ 
+        categorias = ["Hora de acceso", "Intentos fallidos", "Cant. accesos", "Duración sesión"]
+ 
+        fig_radar = go.Figure()
+ 
+        fig_radar.add_trace(go.Scatterpolar(
+            r=[avg_login_hour, avg_failed_attempts, avg_access_count, avg_session_duration, avg_login_hour],
+            theta=categorias + [categorias[0]],
+            fill="toself",
+            name="Promedio histórico",
+            line=dict(color="#00D4FF", width=2),
+            fillcolor="rgba(0,212,255,0.1)"
+        ))
+ 
+        fig_radar.add_trace(go.Scatterpolar(
+            r=[cur_login_hour, cur_failed_attempts, cur_access_count, cur_session_duration, cur_login_hour],
+            theta=categorias + [categorias[0]],
+            fill="toself",
+            name="Sesión analizada",
+            line=dict(color="#FF4D4D" if prediction[0] == -1 else "#FFB300", width=2),
+            fillcolor="rgba(255,77,77,0.15)" if prediction[0] == -1 else "rgba(255,179,0,0.15)"
+        ))
+ 
+        fig_radar.update_layout(
+            polar=dict(
+                bgcolor="rgba(0,0,0,0)",
+                radialaxis=dict(visible=True, range=[0, 1], gridcolor="#1E2A3A", tickfont=dict(color="#334155")),
+                angularaxis=dict(gridcolor="#1E2A3A", tickfont=dict(color="#94A3B8"))
+            ),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font_color="#94A3B8",
+            legend=dict(font=dict(color="#94A3B8"), bgcolor="rgba(0,0,0,0)"),
+            margin=dict(t=40, b=40, l=60, r=60),
+            showlegend=True
+        )
+ 
+        col_radar, col_reasons = st.columns([1, 1])
+ 
+        with col_radar:
+            st.subheader("Comparación vs. comportamiento histórico")
+            st.caption("Valores normalizados 0–1. Azul = promedio del dataset. Rojo/amarillo = sesión actual.")
+            st.plotly_chart(fig_radar, use_container_width=True)
+ 
+        with col_reasons:
+            st.subheader("Factores de riesgo detectados")
+            st.caption("Reglas disparadas durante el análisis de esta sesión.")
+ 
+            if reasons:
+                for emoji, titulo, detalle in reasons:
+                    st.markdown(f"""
+                    <div style='background:#111827; border:1px solid #1E2A3A; border-left:3px solid
+                        {"#FF4D4D" if emoji == "🔴" else "#FFB300"};
+                        border-radius:8px; padding:12px 14px; margin-bottom:10px;'>
+                        <div style='font-size:13px; font-weight:600; color:#E2E8F0;'>{emoji} {titulo}</div>
+                        <div style='font-size:12px; color:#64748B; margin-top:3px;'>{detalle}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div style='background:#111827; border:1px solid #1E2A3A; border-left:3px solid #00D4FF;
+                    border-radius:8px; padding:12px 14px;'>
+                    <div style='font-size:13px; font-weight:600; color:#00D4FF;'>✅ Sin factores de riesgo</div>
+                    <div style='font-size:12px; color:#64748B; margin-top:3px;'>
+                        Todos los parámetros están dentro del rango normal del baseline histórico.
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+ 
+            # Nota técnica sobre el score del modelo
+            st.markdown(f"""
+            <div style='background:#0D1117; border:1px solid #1E2A3A; border-radius:8px;
+                padding:12px 14px; margin-top:12px;'>
+                <div style='font-size:11px; color:#334155; margin-bottom:4px; text-transform:uppercase;
+                    letter-spacing:0.05em;'>Nota técnica — Isolation Forest</div>
+                <div style='font-size:12px; color:#64748B; line-height:1.6;'>
+                    <code style='color:#00D4FF;'>decision_function()</code> retornó
+                    <code style='color:{"#FF4D4D" if anomaly_score < 0 else "#00D4FF"};'>{anomaly_score:.4f}</code>.
+                    Valores {'negativos indican que el punto está en una región de baja densidad del árbol — característica de las anomalías.' if anomaly_score < 0 else 'positivos indican que el punto está en la región densa del espacio de features — comportamiento típico.'}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
         # ── Guardar alerta en historial ──────────────────────────────────────
         alert = {
