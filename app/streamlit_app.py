@@ -289,7 +289,7 @@ elif menu == "Análisis":
         """, unsafe_allow_html=True)
 
         
-        # ── Comparación vs. promedio histórico (radar chart) ─────────────────
+        # ── Comparación vs. promedio histórico (radar chart) ─
         hist = load_data()
  
         # Promedios del dataset (comportamiento histórico normalizado a escala 0-1)
@@ -314,7 +314,7 @@ elif menu == "Análisis":
             fill="toself",
             name="Promedio histórico",
             line=dict(color="#00D4FF", width=2),
-            fillcolor="rgba(0,212,255,0.1)"
+            fillcolor="rgba(0,212,255,0.1)" 
         ))
  
         fig_radar.add_trace(go.Scatterpolar(
