@@ -32,23 +32,59 @@ if "last_risk_level" not in st.session_state:
 if "last_risk_pct" not in st.session_state:
     st.session_state.last_risk_pct = 10
 
-# ── Mapeos para encoding (igual que en el notebook) ─────────────────────────
-LOCATION_MAP   = {"CR": 0, "ES": 1, "MX": 2, "US": 3}
-DEVICE_MAP     = {"desktop": 0, "mobile": 1, "tablet": 2}
-ACTIVITY_MAP   = {"delete": 0, "download": 1, "login": 2, "upload": 3}
-DAY_MAP        = {"Mon": 0, "Tue": 1, "Wed": 2, "Thu": 3, "Fri": 4, "Sat": 5, "Sun": 6}
+# ── Mapeos para encoding  ─────────────────────────
+PROTOCOL_MAP = {"icmp": 0, "tcp": 1, "udp": 2}
+ 
+SERVICE_MAP = {
+    "ftp_data": 0, "other": 1, "private": 2, "http": 3,
+    "remote_job": 4, "name": 5, "netbios_ns": 6, "eco_i": 7,
+    "mtp": 8, "telnet": 9, "finger": 10, "domain_u": 11,
+    "supdup": 12, "uucp_path": 13, "Z39_50": 14, "smtp": 15,
+    "csnet_ns": 16, "uucp": 17, "netbios_dgm": 18, "urp_i": 19,
+    "auth": 20, "domain": 21, "ftp": 22, "bgp": 23, "ldap": 24,
+    "ecr_i": 25, "gopher": 26, "vmnet": 27, "systat": 28,
+    "http_443": 29, "efs": 30, "whois": 31, "imap4": 32,
+    "iso_tsap": 33, "echo": 34, "klogin": 35, "link": 36,
+    "sunrpc": 37, "login": 38, "kshell": 39, "sql_net": 40,
+    "time": 41, "hostnames": 42, "exec": 43, "ntp_u": 44,
+    "discard": 45, "nntp": 46, "courier": 47, "ctf": 48,
+    "ssh": 49, "daytime": 50, "shell": 51, "netstat": 52,
+    "pop_3": 53, "nnsp": 54, "IRC": 55, "pop_2": 56,
+    "printer": 57, "tim_i": 58, "pm_dump": 59, "red_i": 60,
+    "netbios_ssn": 61, "rje": 62, "X11": 63, "urh_i": 64,
+    "http_8001": 65, "aol": 66, "http_2784": 67, "tftp_u": 68,
+    "harvest": 69
+}
+ 
+FLAG_MAP = {
+    "OTH": 0, "REJ": 1, "RSTO": 2, "RSTOS0": 3,
+    "RSTR": 4, "S0": 5, "S1": 6, "S2": 7,
+    "S3": 8, "SF": 9, "SH": 10
+}
+ 
+LOGGED_IN_MAP = {"No (0)": 0, "Sí (1)": 1}
+ 
+
+# ── Rutas absolutas basadas en la ubicación del script ──────────────────────
+BASE_DIR        = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+MODEL_PATH      = os.path.join(BASE_DIR, "model", "anomaly_model.pkl")
+DATA_PATH       = os.path.join(BASE_DIR, "data",  "processed_data.csv")
+RAW_DATA_PATH   = os.path.join(BASE_DIR, "data",  "user_behavior.csv")
 
 # ── Carga del modelo y datos ─────────────────────────────────────────────────
 @st.cache_resource
 def load_model():
-    return joblib.load("model/anomaly_model.pkl")
+    return joblib.load(MODEL_PATH)
 
 @st.cache_data
 def load_data():
-    return pd.read_csv("data/processed_data.csv")
+    return pd.read_csv(DATA_PATH)
 
 model = load_model()
 data  = load_data()
+
+st.sidebar.caption(f"📂 Dataset: {len(data):,} registros")
+st.sidebar.caption(f"Columnas: {list(data.columns)}")
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -168,194 +204,205 @@ if menu == "Inicio":
 # ANÁLISIS
 # ════════════════════════════════════════════════════════════════════════════
 elif menu == "Análisis":
-
-    st.markdown("<div class='section-title'>🔍 Análisis de comportamiento</div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-subtitle'>Ingresa los datos de un usuario para evaluar su nivel de riesgo</div>", unsafe_allow_html=True)
-
+ 
+    st.markdown("<div class='section-title'>🔍 Análisis de Tráfico de Red</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-subtitle'>Ingresa las características de una conexión para evaluar si es anómala</div>", unsafe_allow_html=True)
+ 
     col1, col2 = st.columns(2)
-
+ 
     with col1:
-        st.markdown("**Parámetros de sesión**")
-        login_hour       = st.slider("Hora de acceso",          0,  23,  12)
-        failed_attempts  = st.slider("Intentos fallidos",        0,  10,   0)
-        access_count     = st.slider("Cantidad de accesos",      1,  20,   5)
-        session_duration = st.slider("Duración de sesión (min)", 1, 120,  30)
-
+        st.markdown("**Características de la conexión**")
+        duration         = st.slider("Duración de la conexión (seg)", 0, 60000, 0)
+        src_bytes        = st.slider("Bytes enviados por el origen", 0, 100000, 200)
+        num_failed_logins = st.slider("Intentos fallidos de login", 0, 10, 0)
+        count            = st.slider("Conexiones al mismo host (últimos 2 seg)", 0, 512, 5)
+ 
     with col2:
-        st.markdown("**Contexto del acceso**")
-        location     = st.selectbox("Ubicación",   ["CR", "US", "MX", "ES"])
-        device       = st.selectbox("Dispositivo", ["desktop", "mobile", "tablet"])
-        activity     = st.selectbox("Tipo de actividad", ["login", "download", "upload", "delete"])
-        day_of_week  = st.selectbox("Día de la semana",  ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
-
+        st.markdown("**Contexto del protocolo**")
+        protocol_type = st.selectbox("Protocolo de red", ["tcp", "udp", "icmp"])
+        service       = st.selectbox("Servicio de destino", ["http", "ftp", "smtp", "ssh", "telnet", "private", "other"])
+        flag          = st.selectbox("Estado de la conexión", ["SF", "REJ", "S0", "RSTO", "RSTR", "S1", "OTH"])
+        logged_in     = st.selectbox("¿Sesión iniciada exitosamente?", ["Sí (1)", "No (0)"])
+ 
+    # Expander con explicación de cada campo
+    with st.expander("ℹ️ ¿Qué significa cada campo?"):
+        st.markdown("""
+        | Campo | Significado |
+        |-------|-------------|
+        | **Duración** | Cuántos segundos duró la conexión |
+        | **Bytes enviados** | Cantidad de datos transferidos desde el origen |
+        | **Intentos fallidos** | Cuántas veces falló el login antes de entrar |
+        | **Conexiones al mismo host** | Cuántas conexiones hubo al mismo servidor en 2 segundos |
+        | **Protocolo** | TCP (web/correo), UDP (streaming), ICMP (ping/diagnóstico) |
+        | **Servicio** | A qué servicio se conectó (http, ftp, ssh...) |
+        | **Flag** | SF = conexión completada normal. REJ = rechazada. S0 = sin respuesta |
+        | **Sesión iniciada** | Si el usuario logró autenticarse exitosamente |
+        """)
+ 
     st.markdown("---")
-
-    if st.button("🔍 Analizar comportamiento", use_container_width=True):
-
+ 
+    if st.button("🔍 Analizar conexión", use_container_width=True):
+ 
         # ── Construir input con encoding correcto ────────────────────────────
+        service_encoded = SERVICE_MAP.get(service, SERVICE_MAP.get("other", 1))
+ 
         input_data = [[
-            login_hour,
-            LOCATION_MAP[location],
-            failed_attempts,
-            access_count,
-            ACTIVITY_MAP[activity],
-            DEVICE_MAP[device],
-            session_duration,
-            DAY_MAP[day_of_week]
+            duration,
+            PROTOCOL_MAP[protocol_type],
+            service_encoded,
+            FLAG_MAP[flag],
+            src_bytes,
+            num_failed_logins,
+            count,
+            LOGGED_IN_MAP[logged_in]
         ]]
-
-        prediction   = model.predict(input_data)
-        anomaly_score = model.decision_function(input_data)[0]  # Score continuo
-
+ 
+        prediction    = model.predict(input_data)
+        anomaly_score = model.decision_function(input_data)[0]
+ 
         # ── Calcular riesgo ──────────────────────────────────────────────────
         risk_score = 0
         reasons    = []
-
-        if failed_attempts > 3:
+ 
+        if num_failed_logins > 2:
             risk_score += 30
-            reasons.append(("🔴", "Múltiples intentos fallidos de acceso", f"{failed_attempts} intentos — umbral normal: ≤3"))
-
-        if access_count > 12:
+            reasons.append(("🔴", "Múltiples intentos fallidos de login", f"{num_failed_logins} intentos — umbral normal: ≤2"))
+ 
+        if count > 100:
+            risk_score += 25
+            reasons.append(("🔴", "Posible ataque DoS — conexiones masivas", f"{count} conexiones en 2 seg — umbral normal: ≤100"))
+ 
+        if flag in ["REJ", "S0", "RSTO"]:
             risk_score += 20
-            reasons.append(("🟡", "Cantidad de accesos inusualmente alta", f"{access_count} accesos — umbral normal: ≤12"))
-
-        if login_hour < 6 or login_hour > 22:
+            reasons.append(("🟡", f"Flag sospechoso: {flag}", "SF = normal. REJ/S0/RSTO indican conexiones anómalas"))
+ 
+        if protocol_type == "icmp" and src_bytes == 0 and count > 50:
             risk_score += 20
-            reasons.append(("🟡", "Acceso en horario inusual", f"Hora {login_hour}:00 — horario normal: 6am–10pm"))
-
-        if session_duration > 90:
+            reasons.append(("🔴", "Patrón de ping flood (ICMP)", "Muchos pings sin datos = posible ataque de reconocimiento"))
+ 
+        if src_bytes > 50000 and logged_in == "No (0)":
             risk_score += 15
-            reasons.append(("🟡", "Sesión excesivamente larga", f"{session_duration} min — umbral normal: ≤90 min"))
-
-        if activity in ["delete", "download"] and failed_attempts > 1:
-            risk_score += 15
-            reasons.append(("🔴", "Actividad crítica con intentos fallidos", f"{failed_attempts} intentos previos a acción de alto impacto"))
-
+            reasons.append(("🟡", "Transferencia masiva sin autenticación", f"{src_bytes:,} bytes sin sesión activa"))
+ 
         if prediction[0] == -1:
             risk_score = max(risk_score, 70)
-
+ 
         risk_score = min(risk_score, 100)
-
+ 
         if risk_score >= 60:
             risk_level = "Alto"
         elif risk_score >= 30:
             risk_level = "Medio"
         else:
             risk_level = "Bajo"
-
-        # Guardar en session state para el Dashboard
+ 
         st.session_state.last_risk_level = risk_level
         st.session_state.last_risk_pct   = risk_score
-
-        # ── Mostrar resultado ────────────────────────────────────────────────
+ 
+        # ── Resultado principal ──────────────────────────────────────────────
         if prediction[0] == -1:
-            st.markdown(f"""
+            st.markdown("""
             <div class='anomaly-alert'>
                 <div style='font-size:18px; font-weight:700; color:#FF4D4D;'>
-                    ⚠️ Comportamiento anómalo detectado
+                    ⚠️ Conexión anómala detectada
                 </div>
                 <div style='color:#94A3B8; font-size:13px; margin-top:4px;'>
-                    El modelo clasificó esta sesión como sospechosa
+                    Isolation Forest clasificó esta conexión fuera del patrón normal del tráfico de red
                 </div>
             </div>
             """, unsafe_allow_html=True)
         else:
-            st.markdown(f"""
+            st.markdown("""
             <div class='safe-alert'>
                 <div style='font-size:18px; font-weight:700; color:#00D4FF;'>
-                    ✅ Comportamiento dentro del rango normal
+                    ✅ Tráfico dentro del rango normal
                 </div>
                 <div style='color:#94A3B8; font-size:13px; margin-top:4px;'>
-                    El modelo no detectó patrones anómalos en esta sesión
+                    El modelo no detectó desviaciones significativas del baseline aprendido
                 </div>
             </div>
             """, unsafe_allow_html=True)
-
-        # Métricas del análisis
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Nivel de Riesgo",    risk_level)
-        col2.metric("Score de Riesgo",    f"{risk_score}%")
-        col3.metric("Score del Modelo",   f"{anomaly_score:.4f}")
-
-        # Barra de riesgo con color dinámico
+ 
+        # Métricas
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Clasificación",   "Anómalo" if prediction[0] == -1 else "Normal")
+        col2.metric("Nivel de Riesgo", risk_level)
+        col3.metric("Score de Riesgo", f"{risk_score}%")
+        col4.metric("Anomaly Score",   f"{anomaly_score:.4f}",
+                    help="Negativo = anómalo. Más negativo = más sospechoso. Umbral = 0")
+ 
+        # Barra de riesgo
         bar_color = "#FF4D4D" if risk_level == "Alto" else ("#FFB300" if risk_level == "Medio" else "#00D4FF")
         st.markdown(f"""
-        <div style='margin:16px 0 8px; font-size:13px; color:#64748B;'>Score de riesgo acumulado</div>
+        <div style='margin:20px 0 6px; font-size:13px; color:#64748B;'>Score de riesgo acumulado</div>
         <div style='background:#1E2A3A; border-radius:8px; height:10px; overflow:hidden;'>
-            <div style='background:{bar_color}; width:{risk_score}%; height:100%;
-                        border-radius:8px; transition:width 0.5s;'></div>
+            <div style='background:{bar_color}; width:{risk_score}%; height:100%; border-radius:8px;'></div>
         </div>
-        <div style='text-align:right; font-size:12px; color:{bar_color}; margin-top:4px;'>{risk_score}%</div>
+        <div style='display:flex; justify-content:space-between; margin-top:4px;'>
+            <span style='font-size:11px; color:#334155;'>0% — Sin riesgo</span>
+            <span style='font-size:12px; color:{bar_color}; font-weight:600;'>{risk_score}%</span>
+            <span style='font-size:11px; color:#334155;'>100% — Crítico</span>
+        </div>
         """, unsafe_allow_html=True)
-
-        
-        # ── Comparación vs. promedio histórico (radar chart) ─
+ 
+        st.divider()
+ 
+        # ── Radar chart vs promedio histórico ────────────────────────────────
         hist = load_data()
  
-        # Promedios del dataset (comportamiento histórico normalizado a escala 0-1)
-        avg_login_hour       = hist["login_hour"].mean() / 23
-        avg_failed_attempts  = hist["failed_attempts"].mean() / 10
-        avg_access_count     = hist["access_count"].mean() / 20
-        avg_session_duration = hist["session_duration"].mean() / 120
+        avg_duration  = hist["duration"].mean()          / max(hist["duration"].max(), 1)
+        avg_src_bytes = hist["src_bytes"].mean()          / max(hist["src_bytes"].max(), 1)
+        avg_failed    = hist["num_failed_logins"].mean()  / 10
+        avg_count     = hist["count"].mean()              / 512
+
+        cur_duration  = min(duration          / max(hist["duration"].max(), 1), 1)
+        cur_src_bytes = min(src_bytes         / max(hist["src_bytes"].max(), 1), 1)
+        cur_failed    = min(num_failed_logins / 10, 1)
+        cur_count     = min(count             / 512, 1)
  
-        # Valores actuales normalizados
-        cur_login_hour       = login_hour / 23
-        cur_failed_attempts  = failed_attempts / 10
-        cur_access_count     = access_count / 20
-        cur_session_duration = session_duration / 120
- 
-        categorias = ["Hora de acceso", "Intentos fallidos", "Cant. accesos", "Duración sesión"]
+        categorias = ["Duración", "Bytes enviados", "Intentos fallidos", "Conexiones"]
  
         fig_radar = go.Figure()
- 
         fig_radar.add_trace(go.Scatterpolar(
-            r=[avg_login_hour, avg_failed_attempts, avg_access_count, avg_session_duration, avg_login_hour],
+            r=[avg_duration, avg_src_bytes, avg_failed, avg_count, avg_duration],
             theta=categorias + [categorias[0]],
-            fill="toself",
-            name="Promedio histórico",
+            fill="toself", name="Promedio histórico",
             line=dict(color="#00D4FF", width=2),
-            fillcolor="rgba(0,212,255,0.1)" 
+            fillcolor="rgba(0,212,255,0.1)"
         ))
- 
         fig_radar.add_trace(go.Scatterpolar(
-            r=[cur_login_hour, cur_failed_attempts, cur_access_count, cur_session_duration, cur_login_hour],
+            r=[cur_duration, cur_src_bytes, cur_failed, cur_count, cur_duration],
             theta=categorias + [categorias[0]],
-            fill="toself",
-            name="Sesión analizada",
+            fill="toself", name="Conexión analizada",
             line=dict(color="#FF4D4D" if prediction[0] == -1 else "#FFB300", width=2),
             fillcolor="rgba(255,77,77,0.15)" if prediction[0] == -1 else "rgba(255,179,0,0.15)"
         ))
- 
         fig_radar.update_layout(
             polar=dict(
                 bgcolor="rgba(0,0,0,0)",
-                radialaxis=dict(visible=True, range=[0, 1], gridcolor="#1E2A3A", tickfont=dict(color="#334155")),
+                radialaxis=dict(visible=True, range=[0,1], gridcolor="#1E2A3A", tickfont=dict(color="#334155")),
                 angularaxis=dict(gridcolor="#1E2A3A", tickfont=dict(color="#94A3B8"))
             ),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#94A3B8",
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font_color="#94A3B8", showlegend=True,
             legend=dict(font=dict(color="#94A3B8"), bgcolor="rgba(0,0,0,0)"),
-            margin=dict(t=40, b=40, l=60, r=60),
-            showlegend=True
+            margin=dict(t=40, b=40, l=60, r=60)
         )
  
         col_radar, col_reasons = st.columns([1, 1])
  
         with col_radar:
-            st.subheader("Comparación vs. comportamiento histórico")
-            st.caption("Valores normalizados 0–1. Azul = promedio del dataset. Rojo/amarillo = sesión actual.")
+            st.subheader("Comparación vs. tráfico histórico")
+            st.caption("Azul = promedio del dataset NSL-KDD. Rojo/amarillo = conexión analizada.")
             st.plotly_chart(fig_radar, use_container_width=True)
  
         with col_reasons:
             st.subheader("Factores de riesgo detectados")
-            st.caption("Reglas disparadas durante el análisis de esta sesión.")
- 
             if reasons:
                 for emoji, titulo, detalle in reasons:
                     st.markdown(f"""
-                    <div style='background:#111827; border:1px solid #1E2A3A; border-left:3px solid
-                        {"#FF4D4D" if emoji == "🔴" else "#FFB300"};
+                    <div style='background:#111827; border:1px solid #1E2A3A;
+                        border-left:3px solid {"#FF4D4D" if emoji == "🔴" else "#FFB300"};
                         border-radius:8px; padding:12px 14px; margin-bottom:10px;'>
                         <div style='font-size:13px; font-weight:600; color:#E2E8F0;'>{emoji} {titulo}</div>
                         <div style='font-size:12px; color:#64748B; margin-top:3px;'>{detalle}</div>
@@ -363,61 +410,62 @@ elif menu == "Análisis":
                     """, unsafe_allow_html=True)
             else:
                 st.markdown("""
-                <div style='background:#111827; border:1px solid #1E2A3A; border-left:3px solid #00D4FF;
-                    border-radius:8px; padding:12px 14px;'>
+                <div style='background:#111827; border:1px solid #1E2A3A;
+                    border-left:3px solid #00D4FF; border-radius:8px; padding:12px 14px;'>
                     <div style='font-size:13px; font-weight:600; color:#00D4FF;'>✅ Sin factores de riesgo</div>
                     <div style='font-size:12px; color:#64748B; margin-top:3px;'>
-                        Todos los parámetros están dentro del rango normal del baseline histórico.
+                        Todos los parámetros dentro del rango normal del tráfico histórico.
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
  
-            # Nota técnica sobre el score del modelo
             st.markdown(f"""
             <div style='background:#0D1117; border:1px solid #1E2A3A; border-radius:8px;
                 padding:12px 14px; margin-top:12px;'>
-                <div style='font-size:11px; color:#334155; margin-bottom:4px; text-transform:uppercase;
-                    letter-spacing:0.05em;'>Nota técnica — Isolation Forest</div>
+                <div style='font-size:11px; color:#334155; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.05em;'>
+                    Nota técnica — Isolation Forest
+                </div>
                 <div style='font-size:12px; color:#64748B; line-height:1.6;'>
                     <code style='color:#00D4FF;'>decision_function()</code> retornó
                     <code style='color:{"#FF4D4D" if anomaly_score < 0 else "#00D4FF"};'>{anomaly_score:.4f}</code>.
-                    Valores {'negativos indican que el punto está en una región de baja densidad del árbol — característica de las anomalías.' if anomaly_score < 0 else 'positivos indican que el punto está en la región densa del espacio de features — comportamiento típico.'}
+                    {"Negativo → el punto se aisló con pocos cortes → región de baja densidad → anomalía." if anomaly_score < 0 else "Positivo → el punto necesitó muchos cortes para aislarse → rodeado de tráfico similar → normal."}
                 </div>
             </div>
             """, unsafe_allow_html=True)
-
-        # ── Guardar alerta en historial ──────────────────────────────────────
+ 
+        # ── Guardar en historial ─────────────────────────────────────────────
         alert = {
-            "Hora":            login_hour,
-            "Ubicación":       location,
-            "Dispositivo":     device,
-            "Actividad":       activity,
-            "Intentos":        failed_attempts,
-            "Accesos":         access_count,
-            "Sesión (min)":    session_duration,
-            "Riesgo":          risk_level,
-            "Score":           f"{risk_score}%",
-            "Modelo":          "Anómalo" if prediction[0] == -1 else "Normal"
+            "Duración":     duration,
+            "Protocolo":    protocol_type,
+            "Servicio":     service,
+            "Flag":         flag,
+            "Bytes orig.":  src_bytes,
+            "Login fails":  num_failed_logins,
+            "Conexiones":   count,
+            "Logged in":    logged_in,
+            "Riesgo":       risk_level,
+            "Score":        f"{risk_score}%",
+            "Anomaly Score":f"{anomaly_score:.4f}",
+            "Modelo":       "Anómalo" if prediction[0] == -1 else "Normal"
         }
         st.session_state.alert_history.append(alert)
-
-        # ── Guardar nuevo registro en CSV ────────────────────────────────────
+ 
+        # ── Guardar en CSV ───────────────────────────────────────────────────
         new_row = pd.DataFrame([{
-            "login_hour":       login_hour,
-            "location":         LOCATION_MAP[location],
-            "failed_attempts":  failed_attempts,
-            "access_count":     access_count,
-            "activity_type":    ACTIVITY_MAP[activity],
-            "device_type":      DEVICE_MAP[device],
-            "session_duration": session_duration,
-            "day_of_week":      DAY_MAP[day_of_week],
-            "anomaly":          prediction[0]
+            "duration":          duration,
+            "protocol_type":     PROTOCOL_MAP[protocol_type],
+            "service":           service_encoded,
+            "flag":              FLAG_MAP[flag],
+            "src_bytes":         src_bytes,
+            "num_failed_logins": num_failed_logins,
+            "count":             count,
+            "logged_in":         LOGGED_IN_MAP[logged_in],
+            "anomaly":           prediction[0]
         }])
-
         updated_data = pd.concat([data, new_row], ignore_index=True)
-        updated_data.to_csv("data/processed_data.csv", index=False)
-        # Limpiar el cache de datos para que el Dashboard refleje el nuevo registro
+        updated_data.to_csv(DATA_PATH, index=False)
         load_data.clear()
+
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -437,17 +485,18 @@ elif menu == "Dashboard":
  
     # ── Métricas globales ────────────────────────────────────────────────────
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Anomalías",    f"{anomaly_count:,}")
-    col2.metric("Comportamientos Normales", f"{normal_count:,}")
-    col3.metric("Registros Totales",  f"{total_records:,}")
-    col4.metric("Tasa de Anomalía",   f"{risk_pct_dash}%")
+    col1.metric("Total Anomalías",        f"{anomaly_count:,}")
+    col2.metric("Conexiones Normales",    f"{normal_count:,}")
+    col3.metric("Registros Totales",      f"{total_records:,}")
+    col4.metric("Tasa de Anomalía",       f"{risk_pct_dash}%")
  
     st.divider()
  
-    # ── Gráficas ─────────────────────────────────────────────────────────────
+    # ── Gráfica 1 y 2 ────────────────────────────────────────────────────────
     col_left, col_right = st.columns(2)
  
     with col_left:
+        # PIE: Distribución normal vs anómalo
         st.subheader("Distribución de anomalías")
         fig_dist = px.pie(
             values=[normal_count, anomaly_count],
@@ -465,8 +514,9 @@ elif menu == "Dashboard":
         st.plotly_chart(fig_dist, use_container_width=True)
  
     with col_right:
-        st.subheader("Intentos fallidos por frecuencia")
-        failed_data = fresh_data["failed_attempts"].value_counts().reset_index()
+        # BAR: Intentos fallidos de login
+        st.subheader("Intentos fallidos de login")
+        failed_data = fresh_data["num_failed_logins"].value_counts().reset_index()
         failed_data.columns = ["Intentos fallidos", "Cantidad"]
         failed_data = failed_data.sort_values("Intentos fallidos")
  
@@ -486,58 +536,53 @@ elif menu == "Dashboard":
         )
         st.plotly_chart(fig_failed, use_container_width=True)
  
-    # ── Accesos por hora ─────────────────────────────────────────────────────
-    st.subheader("Patrón de accesos por hora del día")
- 
-    # Separar normales y anómalos por hora
-    hour_normal  = fresh_data[fresh_data["anomaly"] == 1]["login_hour"].value_counts().reset_index()
-    hour_anomaly = fresh_data[fresh_data["anomaly"] == -1]["login_hour"].value_counts().reset_index()
-    hour_normal.columns  = ["Hora", "Cantidad"]
-    hour_anomaly.columns = ["Hora", "Cantidad"]
- 
-    fig_hour = go.Figure()
-    fig_hour.add_trace(go.Scatter(
-        x=hour_normal.sort_values("Hora")["Hora"],
-        y=hour_normal.sort_values("Hora")["Cantidad"],
-        name="Normal", mode="lines+markers",
-        line=dict(color="#00D4FF", width=2),
-        marker=dict(size=6)
-    ))
-    fig_hour.add_trace(go.Scatter(
-        x=hour_anomaly.sort_values("Hora")["Hora"],
-        y=hour_anomaly.sort_values("Hora")["Cantidad"],
-        name="Anómalo", mode="lines+markers",
-        line=dict(color="#FF4D4D", width=2, dash="dot"),
-        marker=dict(size=6)
-    ))
-    fig_hour.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+    # ── Gráfica 3: Accesos por tipo de actividad (normal vs anómalo) ──────────
+    # ── Gráfica 3: Conexiones por protocolo (normal vs anómalo) ─────────────
+    st.subheader("Conexiones por protocolo de red")
+    st.caption("Compara tráfico normal vs anómalo según el protocolo usado.")
+
+    proto_inv = {0: "icmp", 1: "tcp", 2: "udp"}
+    fresh_data["protocol_nombre"] = fresh_data["protocol_type"].map(proto_inv).fillna("otro")
+
+    proto_normal  = fresh_data[fresh_data["anomaly"] == 1]["protocol_nombre"].value_counts().reset_index()
+    proto_anomaly = fresh_data[fresh_data["anomaly"] == -1]["protocol_nombre"].value_counts().reset_index()
+    proto_normal.columns  = ["Protocolo", "Cantidad"]
+    proto_anomaly.columns = ["Protocolo", "Cantidad"]
+
+    fig_proto = go.Figure()
+    fig_proto.add_trace(go.Bar(x=proto_normal["Protocolo"],  y=proto_normal["Cantidad"],  name="Normal",  marker_color="#00D4FF"))
+    fig_proto.add_trace(go.Bar(x=proto_anomaly["Protocolo"], y=proto_anomaly["Cantidad"], name="Anómalo", marker_color="#FF4D4D"))
+    fig_proto.update_layout(
+        barmode="group",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font_color="#94A3B8",
-        xaxis=dict(title="Hora del día (0–23)", gridcolor="#1E2A3A"),
-        yaxis=dict(title="Cantidad de accesos", gridcolor="#1E2A3A"),
+        xaxis=dict(title="Protocolo", gridcolor="#1E2A3A"),
+        yaxis=dict(title="Cantidad",  gridcolor="#1E2A3A"),
         legend=dict(font=dict(color="#94A3B8")),
         margin=dict(t=20, b=40, l=40, r=20)
     )
-    st.plotly_chart(fig_hour, use_container_width=True)
+    st.plotly_chart(fig_proto, use_container_width=True)
  
-    # ── Scatter: Hora vs Intentos fallidos (coloreado por anomalía) ──────────
-    st.subheader("Mapa de calor: Hora de acceso vs. Intentos fallidos")
-    st.caption("Cada punto es un registro. Rojo = comportamiento anómalo detectado por el modelo.")
- 
+    # ── Gráfica 4: Scatter — Duración de sesión vs Conteo de accesos ─────────
+    # ── Gráfica 4: Scatter — Bytes enviados vs Conexiones ────────────────────
+    st.subheader("Mapa de anomalías: Bytes enviados vs. Conexiones al host")
+    st.caption("Cada punto es una conexión. Rojo = anómalo detectado por Isolation Forest.")
+
+    plot_data = fresh_data.copy()
+    plot_data["src_bytes_clip"] = plot_data["src_bytes"].clip(0, 50000)
+    plot_data["count_clip"]     = plot_data["count"].clip(0, 300)
+
     fig_scatter = px.scatter(
-        fresh_data,
-        x="login_hour",
-        y="failed_attempts",
-        color=fresh_data["anomaly"].map({1: "Normal", -1: "Anómalo"}),
+        plot_data,
+        x="src_bytes_clip",
+        y="count_clip",
+        color=plot_data["anomaly"].map({1: "Normal", -1: "Anómalo"}),
         color_discrete_map={"Normal": "rgba(0,212,255,0.25)", "Anómalo": "#FF4D4D"},
-        opacity=0.7,
-        labels={"login_hour": "Hora de acceso", "failed_attempts": "Intentos fallidos", "color": "Clasificación"},
-        size_max=8
+        opacity=0.6,
+        labels={"src_bytes_clip": "Bytes enviados (máx 50K)", "count_clip": "Conexiones al host (máx 300)", "color": "Clasificación"},
     )
     fig_scatter.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font_color="#94A3B8",
         xaxis=dict(gridcolor="#1E2A3A"),
         yaxis=dict(gridcolor="#1E2A3A"),
@@ -550,7 +595,6 @@ elif menu == "Dashboard":
     # ── Nivel de Riesgo Global ───────────────────────────────────────────────
     st.subheader("Nivel de riesgo global del sistema")
  
-    # Usar el riesgo global basado en datos, no en el último análisis
     if risk_pct_dash >= 15:
         riesgo_label = "Alto"
         riesgo_color = "#FF4D4D"
@@ -571,7 +615,7 @@ elif menu == "Dashboard":
             <div style='background:{riesgo_color}; width:{risk_pct_dash}%; height:100%; border-radius:8px;'></div>
         </div>
         <div style='text-align:right; font-size:13px; color:{riesgo_color}; margin-top:6px;'>
-            {risk_pct_dash}% de los registros son anómalos
+            {risk_pct_dash}% de las conexiones son anómalas
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -588,8 +632,9 @@ elif menu == "Dashboard":
             st.session_state.alert_history = []
             st.rerun()
     else:
-        st.info("Aún no hay análisis registrados en esta sesión. Ve a **Análisis** para evaluar un comportamiento.")
+        st.info("Aún no hay análisis registrados en esta sesión. Ve a **Análisis** para evaluar una conexión.")
  
+
  
 
 # ════════════════════════════════════════════════════════════════════════════
